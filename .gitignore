@@ -1,0 +1,44 @@
+# Rust
+/target/
+Cargo.lock
+
+# Dart/Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+*.lock
+
+# VSCode
+.vscode/
+
+# IDE ve Sistem Dosyaları
+*.swp
+*.swo
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# Test ve Geçici Dosyalar
+*.test
+*.bak
+*.old
+
+# Kişisel Notlar ve Çalışma Dosyaları
+pasted_content.txt
+*.md
+
+audio_processing_research.md
+speech_to_text_research.md
+research_notes.md
+testing_guide.md
+cli_workflow.md
+complete_solution_guide.md
+system_architecture.md
+todo.md
+rust_basics.md
+vscode_remote_setup.md
+
+# Diğer
+Makefile
