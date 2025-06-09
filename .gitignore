@@ -1,44 +1,79 @@
-# Rust
-/target/
+# Rust-specific ignores
 Cargo.lock
+target/
+*.rs.bk
 
-# Dart/Flutter
+# Flutter-specific ignores
+pubspec.lock
 .dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.metadata
+build/
+ios/Pods/
+ios/Runner.xcworkspace/
+ios/Runner.xcodeproj/project.xcworkspace
+android/app/src/main/assets/
+android/app/src/main/jniLibs/
+android/app/build.gradle
+.android/
+
+# Environment variables
+.env
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
 .packages
 .pub/
 build/
 *.lock
+.flutter-plugins
+.flutter-plugins-dependencies
 
-# VSCode
+# Android
+/android/app/debug
+/android/app/profile
+/android/app/release
+/android/gradle/
+/android/.gradle
+/android/local.properties
+/android/**/GeneratedPluginRegistrant.*
+
+# iOS
+/ios/Flutter/.last_build_id
+/ios/Flutter/ephemeral
+/ios/Flutter/app.flx
+/ios/Flutter/app.zip
+/ios/Flutter/flutter_assets/
+/ios/ServiceDefinitions.json
+/ios/Runner/GeneratedPluginRegistrant.*
+/ios/Pods/
+/ios/.symlinks/
+
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
 .vscode/
-
-# IDE ve Sistem Dosyaları
-*.swp
-*.swo
-*.tmp
-*.log
+*.iml
+*.iws
+*.ipr
 .DS_Store
-Thumbs.db
 
-# Test ve Geçici Dosyalar
-*.test
-*.bak
-*.old
-
-# Kişisel Notlar ve Çalışma Dosyaları
-pasted_content.txt
-*.md
-
-audio_processing_research.md
-speech_to_text_research.md
-research_notes.md
-testing_guide.md
-cli_workflow.md
-complete_solution_guide.md
-system_architecture.md
-todo.md
-rust_basics.md
-vscode_remote_setup.md
-
-# Diğer
-Makefile
+# Logs
+*.log
