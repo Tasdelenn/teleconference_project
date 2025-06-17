@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telekonferans Web İstemcisi</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Telekonferans Web İstemcisi</h1>
+        
+        <div class="join-form">
+            <input type="text" id="roomId" placeholder="Oda ID">
+            <input type="text" id="userName" placeholder="Kullanıcı Adı">
+            <button id="joinBtn">Odaya Katıl</button>
+        </div>
+        
+        <div class="conference-room" style="display: none;">
+            <div class="video-container">
+                <div class="video-wrapper">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div class="video-label">Sen</div>
+                </div>
+                <div id="remoteVideos" class="remote-videos"></div>
+            </div>
+            
+            <div class="controls">
+                <button id="muteBtn">Mikrofonu Kapat</button>
+                <button id="videoBtn">Videoyu Kapat</button>
+                <button id="leaveBtn">Odadan Ayrıl</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="main.js"></script>
+</body>
+</html>

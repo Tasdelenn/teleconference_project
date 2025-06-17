@@ -10,8 +10,9 @@ name = "server"
 path = "src/bin/server.rs"
 
 [lib]
-name = "teleconference_server"
+name = "teleconference_lib"
 path = "lib.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
@@ -24,9 +25,18 @@ log = "0.4"
 env_logger = "0.10"
 thiserror = "1.0"
 async-trait = "0.1"
-webrtc = "0.7"
+webrtc = "0.7"  
 anyhow = "1.0"
 clap = { version = "4.2", features = ["derive"] }
 dotenv = "0.15"
-flutter_rust_bridge = "1.77.0"
 lazy_static = "1.4.0"
+flutter_rust_bridge = { version = "1.77.0", optional = true }
+
+[features]
+default = []
+ffi = ["flutter_rust_bridge"]
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1

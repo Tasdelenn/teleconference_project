@@ -1,545 +1,422 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
-use tokio::net::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use uuid::Uuid;
+use std::sync::Mutex;  // Arc'ı kaldırdık
 use anyhow::Result;
 use lazy_static::lazy_static;
 
-// Hata türleri
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TeleconferenceError {
-    NetworkError(String),
-    InvalidData,
-    SessionNotFound,
-    ConnectionClosed,
-    InternalError(String),
-}
+// FFI için gerekli makrolar
+#[cfg(feature = "ffi")]
+pub mod ffi;
 
-pub type TeleconferenceResult<T> = Result<T, TeleconferenceError>;
-
-// Cihaz bilgisi
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DeviceInfo {
-    pub device_id: String,
-    pub device_type: String,
-    pub network_capabilities: NetworkCapabilities,
-    pub supported_features: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NetworkCapabilities {
-    pub max_bandwidth: String,
-    pub latency: u32,
-}
-
-// AudioProcessor yapısı
-pub struct AudioProcessor {
-    mode: i32,
-    echo_cancel: bool,
-    noise_reduction: bool,
-    auto_gain_control: bool,
-    microphone_mode: i32,
-    volume_level: i32,
-}
-
-impl AudioProcessor {
-    pub fn new() -> Self {
-        Self {
-            mode: 0,
-            echo_cancel: true,
-            noise_reduction: true,
-            auto_gain_control: true,
-            microphone_mode: 1, // omnidirectional
-            volume_level: 5,
+// Ses işleme modülü
+pub mod audio {
+    use super::*;
+    
+    // Ses işleme yapılandırması
+    #[derive(Debug, Clone)]
+    pub struct AudioConfig {
+        pub volume_level: i32,        // 1-9 arası ses seviyesi
+        pub processing_mode: i32,     // 0: standard, 1: noiseReduction, 2: voiceEnhancement, 3: fullDuplex, 4: custom
+        pub microphone_mode: i32,     // 0: directional, 1: omnidirectional, 2: cardioid, 3: beamforming
+        pub echo_cancel: bool,        // Yankı iptali
+        pub noise_reduction: bool,    // Gürültü azaltma
+        pub auto_gain_control: bool,  // Otomatik kazanç kontrolü
+    }
+    
+    impl Default for AudioConfig {
+        fn default() -> Self {
+            Self {
+                volume_level: 5,
+                processing_mode: 0,
+                microphone_mode: 1,
+                echo_cancel: true,
+                noise_reduction: true,
+                auto_gain_control: true,
+            }
         }
     }
     
-    pub fn set_mode(&mut self, mode: i32) {
-        self.mode = mode;
+    // Ses işleme motoru
+    pub struct AudioProcessor {
+        config: AudioConfig,
     }
     
-    pub fn set_echo_cancel(&mut self, enabled: bool) {
-        self.echo_cancel = enabled;
-    }
-    
-    pub fn set_noise_reduction(&mut self, enabled: bool) {
-        self.noise_reduction = enabled;
-    }
-    
-    pub fn set_auto_gain_control(&mut self, enabled: bool) {
-        self.auto_gain_control = enabled;
-    }
-    
-    pub fn set_microphone_mode(&mut self, mode: i32) {
-        self.microphone_mode = mode;
-    }
-    
-    pub fn set_volume_level(&mut self, level: i32) {
-        self.volume_level = level;
-    }
-    
-    pub fn process(&self, audio_data: &[f32]) -> Result<Vec<f32>> {
-        // Burada gerçek ses işleme algoritmaları uygulanacak
-        // Şimdilik sadece veriyi kopyalayalım
-        Ok(audio_data.to_vec())
-    }
-    
-    pub fn configure_device(&mut self, device_id: &str, device_type: &str) -> Result<()> {
-        // Cihaz yapılandırması
-        println!("Cihaz yapılandırıldı: {} ({})", device_id, device_type);
-        Ok(())
+    impl AudioProcessor {
+        pub fn new() -> Self {
+            Self {
+                config: AudioConfig::default(),
+            }
+        }
+        
+        // Ses işleme yapılandırmasını ayarla
+        pub fn set_config(&mut self, config: AudioConfig) {
+            self.config = config;
+        }
+        
+        // Ses seviyesini ayarla
+        pub fn set_volume_level(&mut self, level: i32) {
+            self.config.volume_level = level.clamp(1, 9);
+        }
+        
+        // İşleme modunu ayarla
+        pub fn set_processing_mode(&mut self, mode: i32) {
+            self.config.processing_mode = mode.clamp(0, 4);
+        }
+        
+        // Mikrofon modunu ayarla
+        pub fn set_microphone_mode(&mut self, mode: i32) {
+            self.config.microphone_mode = mode.clamp(0, 3);
+        }
+        
+        // Yankı iptalini ayarla
+        pub fn set_echo_cancel(&mut self, enabled: bool) {
+            self.config.echo_cancel = enabled;
+        }
+        
+        // Gürültü azaltmayı ayarla
+        pub fn set_noise_reduction(&mut self, enabled: bool) {
+            self.config.noise_reduction = enabled;
+        }
+        
+        // Otomatik kazanç kontrolünü ayarla
+        pub fn set_auto_gain_control(&mut self, enabled: bool) {
+            self.config.auto_gain_control = enabled;
+        }
+        
+        // Ses verilerini işle
+        pub fn process_audio(&self, audio_data: &[f32]) -> Result<Vec<f32>> {
+            let mut processed_data = audio_data.to_vec();
+            
+            // Ses seviyesi ayarı
+            let volume_factor = self.config.volume_level as f32 / 5.0;
+            for sample in &mut processed_data {
+                *sample *= volume_factor;
+            }
+            
+            // İşleme moduna göre ses işleme
+            match self.config.processing_mode {
+                1 => self.apply_noise_reduction(&mut processed_data)?,
+                2 => self.apply_voice_enhancement(&mut processed_data)?,
+                3 => self.apply_full_duplex(&mut processed_data)?,
+                4 => self.apply_custom_processing(&mut processed_data)?,
+                _ => {} // Standart mod, ek işlem yok
+            }
+            
+            // Yankı iptali
+            if self.config.echo_cancel {
+                self.apply_echo_cancellation(&mut processed_data)?;
+            }
+            
+            // Gürültü azaltma
+            if self.config.noise_reduction {
+                self.apply_noise_reduction(&mut processed_data)?;
+            }
+            
+            // Otomatik kazanç kontrolü
+            if self.config.auto_gain_control {
+                self.apply_auto_gain_control(&mut processed_data)?;
+            }
+            
+            Ok(processed_data)
+        }
+        
+        // Gürültü azaltma algoritması
+        fn apply_noise_reduction(&self, audio_data: &mut [f32]) -> Result<()> {
+            // Basit bir gürültü azaltma algoritması
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            let threshold = 0.05;
+            for sample in audio_data.iter_mut() {
+                if sample.abs() < threshold {
+                    *sample = 0.0;
+                }
+            }
+            Ok(())
+        }
+        
+        // Ses yükseltme algoritması
+        fn apply_voice_enhancement(&self, audio_data: &mut [f32]) -> Result<()> {
+            // Basit bir ses yükseltme algoritması
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            let gain = 1.2;
+            for sample in audio_data.iter_mut() {
+                *sample *= gain;
+                // Clipping önleme
+                if *sample > 1.0 {
+                    *sample = 1.0;
+                } else if *sample < -1.0 {
+                    *sample = -1.0;
+                }
+            }
+            Ok(())
+        }
+        
+        // Tam çift yönlü iletişim algoritması
+        fn apply_full_duplex(&self, _audio_data: &mut [f32]) -> Result<()> {
+            // Tam çift yönlü iletişim için gerekli işlemler
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            Ok(())
+        }
+        
+        // Özel işleme algoritması
+        fn apply_custom_processing(&self, _audio_data: &mut [f32]) -> Result<()> {
+            // Özel işleme algoritması
+            // Gerçek uygulamada kullanıcı tanımlı parametrelerle çalışacak
+            Ok(())
+        }
+        
+        // Yankı iptali algoritması
+        fn apply_echo_cancellation(&self, _audio_data: &mut [f32]) -> Result<()> {
+            // Yankı iptali algoritması
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            Ok(())
+        }
+        
+        // Otomatik kazanç kontrolü algoritması
+        fn apply_auto_gain_control(&self, audio_data: &mut [f32]) -> Result<()> {
+            // Otomatik kazanç kontrolü algoritması
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            
+            // Ortalama ses seviyesini hesapla
+            let mut sum = 0.0;
+            for sample in audio_data.iter() {
+                sum += sample.abs();
+            }
+            let avg = sum / audio_data.len() as f32;
+            
+            // Hedef seviye
+            let target_level = 0.3;
+            
+            // Kazanç faktörü
+            let gain_factor = if avg > 0.0 { target_level / avg } else { 1.0 };
+            
+            // Kazancı uygula
+            for sample in audio_data.iter_mut() {
+                *sample *= gain_factor;
+                // Clipping önleme
+                if *sample > 1.0 {
+                    *sample = 1.0;
+                } else if *sample < -1.0 {
+                    *sample = -1.0;
+                }
+            }
+            
+            Ok(())
+        }
+        
+        // Ses kalitesini hesapla (0.0 - 1.0 arası)
+        pub fn calculate_signal_quality(&self, audio_data: &[f32]) -> f32 {
+            // Basit bir sinyal kalitesi hesaplama algoritması
+            // Gerçek uygulamada daha karmaşık bir algoritma kullanılacak
+            
+            // Sinyal-gürültü oranını hesapla
+            let mut signal_power = 0.0;
+            let mut noise_power = 0.0;
+            let threshold = 0.05;
+            
+            for sample in audio_data.iter() {
+                let power = sample * sample;
+                if sample.abs() > threshold {
+                    signal_power += power;
+                } else {
+                    noise_power += power;
+                }
+            }
+            
+            // SNR hesapla
+            let snr = if noise_power > 0.0 { signal_power / noise_power } else { 100.0 };
+            
+            // SNR'yi 0.0 - 1.0 aralığına dönüştür
+            let quality = (snr / (snr + 10.0)).clamp(0.0, 1.0);
+            
+            quality
+        }
     }
 }
 
+// USB cihaz yönetimi modülü
+pub mod device {
+    use super::*;
+    
+    #[derive(Debug, Clone)]
+    pub struct AudioDevice {
+        pub device_id: String,
+        pub device_type: String,
+        pub is_connected: bool,
+    }
+    
+    pub struct DeviceManager {
+        devices: Vec<AudioDevice>,
+    }
+    
+    impl DeviceManager {
+        pub fn new() -> Self {
+            Self {
+                devices: Vec::new(),
+            }
+        }
+        
+        // USB cihazlarını algıla
+        pub fn detect_devices(&mut self) -> Result<Vec<AudioDevice>> {
+            // Gerçek uygulamada platform-specific kod kullanarak USB cihazları algılanacak
+            // Şimdilik varsayılan bir cihaz ekliyoruz
+            self.devices = vec![
+                AudioDevice {
+                    device_id: "usb-audio-device-1".to_string(),
+                    device_type: "USB-C".to_string(),
+                    is_connected: true,
+                }
+            ];
+            
+            Ok(self.devices.clone())
+        }
+        
+        // Cihaz yapılandırma
+        pub fn configure_device(&mut self, device_id: &str, device_type: &str) -> Result<()> {
+            // Cihaz yapılandırma işlemleri
+            // Gerçek uygulamada platform-specific kod kullanarak cihaz yapılandırılacak
+            println!("Cihaz yapılandırıldı: {} ({})", device_id, device_type);
+            Ok(())
+        }
+    }
+}
+
+// Global ses işleme motoru
 lazy_static! {
-    static ref AUDIO_PROCESSOR: Mutex<AudioProcessor> = Mutex::new(AudioProcessor::new());
+    static ref AUDIO_PROCESSOR: Mutex<audio::AudioProcessor> = Mutex::new(audio::AudioProcessor::new());
+    static ref DEVICE_MANAGER: Mutex<device::DeviceManager> = Mutex::new(device::DeviceManager::new());
 }
 
-// Yeni fonksiyonlar ekleyelim
-#[flutter_rust_bridge::frb(sync)]
-pub fn process_audio_advanced(
-    audio_data: Vec<f32>,
-    mode: i32,
-    echo_cancel: bool,
-    noise_reduction: bool,
-    auto_gain_control: bool,
-    microphone_mode: i32,
-    volume_level: i32,
-) -> Result<Vec<f32>> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+// Flutter Rust Bridge için API fonksiyonları
+#[cfg(feature = "ffi")]
+pub mod api {
+    use super::*;
     
-    // İşleme modunu ayarla
-    processor.set_mode(mode);
-    processor.set_echo_cancel(echo_cancel);
-    processor.set_noise_reduction(noise_reduction);
-    processor.set_auto_gain_control(auto_gain_control);
-    processor.set_microphone_mode(microphone_mode);
-    processor.set_volume_level(volume_level);
+    // Ses işleme modülünü başlat
+    pub fn initialize_audio_processor() -> Result<bool> {
+        // Ses işleme modülünü başlat
+        println!("Ses işleme modülü başlatıldı");
+        Ok(true)
+    }
     
     // Ses verilerini işle
-    let processed_data = processor.process(&audio_data)?;
+    pub fn process_audio(audio_data: Vec<f32>) -> Result<Vec<f32>> {
+        let processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.process_audio(&audio_data)
+    }
     
-    Ok(processed_data)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_volume_level(level: i32) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_volume_level(level);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_audio_processing_mode(mode: i32) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_mode(mode);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_microphone_mode(mode: i32) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_microphone_mode(mode);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_echo_cancel(enabled: bool) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_echo_cancel(enabled);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_noise_reduction(enabled: bool) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_noise_reduction(enabled);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn set_auto_gain_control(enabled: bool) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.set_auto_gain_control(enabled);
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn configure_audio_device(device_id: String, device_type: String) -> Result<bool> {
-    let mut processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.configure_device(&device_id, &device_type)?;
-    Ok(true)
-}
-
-// Katılımcı
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Participant {
-    pub id: String,
-    pub device_info: DeviceInfo,
-}
-
-impl Participant {
-    pub fn new(id: String, device_info: DeviceInfo) -> Self {
-        Self { id, device_info }
-    }
-}
-
-// Oturum bilgisi
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionInfo {
-    pub session_id: String,
-    pub created_at: u64,
-    pub participants: Vec<Participant>,
-}
-
-// Sohbet mesajı
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub from: String,
-    pub content: String,
-    pub timestamp: u64,
-}
-
-// İstemci mesajları
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ClientMessage {
-    Connect {
-        session_id: String,
-        participant_id: String,
-        device_info: DeviceInfo,
-    },
-    Disconnect {
-        session_id: String,
-        participant_id: String,
-    },
-    AudioData {
-        session_id: String,
-        participant_id: String,
-        data: Vec<u8>,
-    },
-    TextMessage {
-        session_id: String,
-        participant_id: String,
-        message: String,
-    },
-    Reconfigure {
-        session_id: String,
-        participant_id: String,
-        device_info: DeviceInfo,
-    },
-    CustomCommand {
-        command: String,
-        payload: String,
-    },
-}
-
-// Sunucu mesajları
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ServerMessage {
-    Connected {
-        session_info: SessionInfo,
-        is_muted: bool,
-    },
-    SessionUpdated {
-        session_info: SessionInfo,
-    },
-    QualityUpdate {
-        quality: f32,
-    },
-    TextMessageReceived {
-        message: ChatMessage,
-    },
-    Error {
-        error: TeleconferenceError,
-    },
-    CustomResponse {
-        command: String,
-        payload: String,
-    },
-}
-
-// Telekonferans çekirdek yapısı
-pub struct TeleconferenceCore {
-    sessions: HashMap<String, SessionInfo>,
-}
-
-impl TeleconferenceCore {
-    pub fn new() -> Self {
-        Self {
-            sessions: HashMap::new(),
-        }
-    }
-
-    pub fn initialize_session(&mut self, participant_id: String, device_info: DeviceInfo) -> TeleconferenceResult<SessionInfo> {
-        let session_id = Uuid::new_v4().to_string();
-        let participant = Participant::new(participant_id, device_info);
+    // Gelişmiş ses işleme
+    pub fn process_audio_advanced(
+        audio_data: Vec<f32>,
+        mode: i32,
+        echo_cancel: bool,
+        noise_reduction: bool,
+        auto_gain_control: bool,
+        microphone_mode: i32,
+        volume_level: i32,
+    ) -> Result<Vec<f32>> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
         
-        let session_info = SessionInfo {
-            session_id: session_id.clone(),
-            created_at: get_current_timestamp(),
-            participants: vec![participant],
-        };
+        // İşleme modunu ayarla
+        processor.set_processing_mode(mode);
+        processor.set_echo_cancel(echo_cancel);
+        processor.set_noise_reduction(noise_reduction);
+        processor.set_auto_gain_control(auto_gain_control);
+        processor.set_microphone_mode(microphone_mode);
+        processor.set_volume_level(volume_level);
         
-        self.sessions.insert(session_id, session_info.clone());
-        Ok(session_info)
+        // Ses verilerini işle
+        processor.process_audio(&audio_data)
     }
-
-    pub fn get_session_info(&self, session_id: String) -> TeleconferenceResult<SessionInfo> {
-        self.sessions.get(&session_id)
-            .cloned()
-            .ok_or(TeleconferenceError::SessionNotFound)
+    
+    // Ses seviyesini ayarla
+    pub fn set_volume_level(level: i32) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_volume_level(level);
+        Ok(true)
     }
-
-    pub fn calculate_quality(&self, _participant_id: Uuid) -> f32 {
-        // Basit bir kalite hesaplama
-        0.85
+    
+    // İşleme modunu ayarla
+    pub fn set_audio_processing_mode(mode: i32) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_processing_mode(mode);
+        Ok(true)
     }
-}
-
-pub type SharedTeleconferenceCore = Arc<Mutex<TeleconferenceCore>>;
-
-// VoidAgent sunucu yapısı
-pub struct VoidAgentServer {
-    address: String,
-    port: u16,
-    is_running: bool,
-    active_sessions: u32,
-    listener: Option<TcpListener>,
-    core: SharedTeleconferenceCore,
-    connected_clients: Arc<Mutex<HashMap<String, String>>>,
-}
-
-impl VoidAgentServer {
-    pub fn new(address: &str, port: u16, core: SharedTeleconferenceCore) -> Self {
-        Self {
-            address: address.to_string(),
-            port,
-            is_running: false,
-            active_sessions: 0,
-            listener: None,
-            core,
-            connected_clients: Arc::new(Mutex::new(HashMap::new())),
+    
+    // Mikrofon modunu ayarla
+    pub fn set_microphone_mode(mode: i32) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_microphone_mode(mode);
+        Ok(true)
+    }
+    
+    // Yankı iptalini ayarla
+    pub fn set_echo_cancel(enabled: bool) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_echo_cancel(enabled);
+        Ok(true)
+    }
+    
+    // Gürültü azaltmayı ayarla
+    pub fn set_noise_reduction(enabled: bool) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_noise_reduction(enabled);
+        Ok(true)
+    }
+    
+    // Otomatik kazanç kontrolünü ayarla
+    pub fn set_auto_gain_control(enabled: bool) -> Result<bool> {
+        let mut processor = AUDIO_PROCESSOR.lock().unwrap();
+        processor.set_auto_gain_control(enabled);
+        Ok(true)
+    }
+    
+    // Cihaz yapılandırma
+    pub fn configure_audio_device(device_id: String, device_type: String) -> Result<bool> {
+        let mut manager = DEVICE_MANAGER.lock().unwrap();
+        manager.configure_device(&device_id, &device_type)?;
+        Ok(true)
+    }
+    
+    // Frekans analizi
+    pub fn analyze_frequency(_audio_data: Vec<f32>) -> Result<Vec<f32>> {
+        // Basit bir frekans analizi
+        // Gerçek uygulamada FFT kullanılacak
+        let mut result = Vec::with_capacity(10);
+        for i in 0..10 {
+            result.push(i as f32 * 0.1);
         }
+        Ok(result)
     }
-
-    async fn handle_client_message(&self, msg: ClientMessage) -> ServerMessage {
-        match msg {
-            ClientMessage::Connect { session_id, participant_id, device_info } => {
-                match self.core.lock().unwrap().get_session_info(session_id) {
-                    Ok(session_info) => {
-                        ServerMessage::Connected {
-                            session_info,
-                            is_muted: false,
-                        }
-                    },
-                    Err(_) => {
-                        // Session yoksa yeni bir tanesi oluşturulur
-                        let _participant = Participant::new(participant_id.clone(), device_info);
-                        match self.core.lock().unwrap().initialize_session(participant_id, Default::default()) {
-                            Ok(session_info) => ServerMessage::Connected {
-                                session_info,
-                                is_muted: false,
-                            },
-                            Err(e) => {
-                                eprintln!("Oturum başlatılamadı: {:?}", e);
-                                ServerMessage::Error { error: e }
-                            }
-                        }
-                    }
-                }
-            },
-            ClientMessage::Disconnect { .. } => {
-                ServerMessage::Error { error: TeleconferenceError::ConnectionClosed }
-            },
-            ClientMessage::AudioData { data, .. } => {
-                if !data.is_empty() {
-                    ServerMessage::QualityUpdate {
-                        quality: self.core.lock().unwrap().calculate_quality(Uuid::new_v4()),
-                    }
-                } else {
-                    ServerMessage::Error { error: TeleconferenceError::InvalidData }
-                }
-            },
-            ClientMessage::TextMessage { message, .. } => {
-                ServerMessage::TextMessageReceived {
-                    message: ChatMessage {
-                        from: "Server".to_string(),
-                        content: message,
-                        timestamp: get_current_timestamp(),
-                    },
-                }
-            },
-            ClientMessage::Reconfigure { session_id, .. } => {
-                match self.core.lock().unwrap().get_session_info(session_id) {
-                    Ok(session_info) => ServerMessage::SessionUpdated { session_info },
-                    Err(e) => ServerMessage::Error { error: e },
-                }
-            },
-            ClientMessage::CustomCommand { command, payload } => {
-                ServerMessage::CustomResponse {
-                    command,
-                    payload,
-                }
-            },
-        }
-    }
-
-    async fn send_server_message<T: AsyncWriteExt + Unpin>(&self, stream: &mut T, msg: &ServerMessage) -> std::io::Result<()> {
-        let payload = serde_json::to_vec(msg)?;
-        println!("Gönderilen yanıt: {}", String::from_utf8_lossy(&payload));
-        stream.write_all(&payload).await?;
-        stream.flush().await?;
-        Ok(())
-    }
-
-    async fn recv_client_message<T: AsyncReadExt + Unpin>(&self, stream: &mut T) -> Result<ClientMessage, TeleconferenceError> {
-        // Doğrudan JSON mesajını okuyoruz, uzunluk başlığı beklemeden
-        let mut buffer = Vec::new();
-        let bytes_read = stream.read_to_end(&mut buffer).await
-            .map_err(|e| TeleconferenceError::NetworkError(e.to_string()))?;
+    
+    // Ses kalitesini hesapla
+    pub fn calculate_signal_quality() -> Result<f32> {
+        // Örnek ses verileri
+        let audio_data = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
         
-        if bytes_read == 0 {
-            return Err(TeleconferenceError::ConnectionClosed);
-        }
+        let processor = AUDIO_PROCESSOR.lock().unwrap();
+        let quality = processor.calculate_signal_quality(&audio_data);
         
-        println!("Alınan mesaj: {}", String::from_utf8_lossy(&buffer));
-        
-        serde_json::from_slice(&buffer).map_err(|e| {
-            eprintln!("JSON ayrıştırma hatası: {}", e);
-            TeleconferenceError::InvalidData
-        })
+        Ok(quality)
     }
-
-    pub async fn start(&mut self) -> TeleconferenceResult<()> {
-        if self.is_running {
-            println!("Sunucu zaten çalışıyor.");
-            return Ok(());
-        }
-
-        let addr = format!("{}:{}", self.address, self.port);
-        println!("VoidAgent sunucu başlatılıyor: {}", &addr);
-
-        let listener = TcpListener::bind(&addr).await
-            .map_err(|e| TeleconferenceError::NetworkError(format!("Bağlantı başlatılamadı: {}", e)))?;
-
-        self.listener = Some(listener);
-        self.is_running = true;
-
-        println!("Sunucu başladı. Bağlantılar kabul ediliyor...");
-
-        let listener_clone = self.listener.as_ref().unwrap();
-
-        loop {
-            let (mut stream, peer) = listener_clone.accept().await
-                .map_err(|e| TeleconferenceError::NetworkError(format!("Bağlantı kabul edilemedi: {}", e)))?;
-
-            println!("Yeni bağlantı kabul edildi: {}", peer);
-
-            let core = Arc::clone(&self.core);
-            let _connected_clients = Arc::clone(&self.connected_clients);
-            let this = self.clone();
-
-            tokio::spawn(async move {
-                loop {
-                    let _result = {
-                        let mut core_lock = core.lock().unwrap();
-                        let msg_result = core_lock.initialize_session(Uuid::new_v4().to_string(), Default::default());
-                        
-                        match msg_result {
-                            Ok(session_info) => {
-                                println!("Yeni oturum oluşturuldu: {:?}", session_info.session_id);
-                            },
-                            Err(e) => {
-                                eprintln!("Oturum başlatılamadı: {:?}", e);
-                                break;
-                            }
-                        };
-                    };
-
-                    match this.recv_client_message(&mut stream).await {
-                        Ok(msg) => {
-                            let server_msg = this.handle_client_message(msg).await;
-                            if let Err(e) = this.send_server_message(&mut stream, &server_msg).await {
-                                eprintln!("Sunucu yanıtı gönderilemiyor: {}", e);
-                                break;
-                            }
-                        },
-                        Err(e) => {
-                            eprintln!("Mesaj alınamadı: {:?}", e);
-                            break;
-                        }
-                    }
-                }
+    
+    // USB cihazları algıla
+    pub fn detect_audio_devices() -> Result<serde_json::Value> {
+        let mut manager = DEVICE_MANAGER.lock().unwrap();
+        let devices = manager.detect_devices()?;
+        
+        // İlk cihazı döndür
+        if let Some(device) = devices.first() {
+            let result = serde_json::json!({
+                "isUsbConnected": device.is_connected,
+                "deviceType": device.device_type,
+                "deviceId": device.device_id
             });
+            Ok(result)
+        } else {
+            let result = serde_json::json!({
+                "isUsbConnected": false,
+                "deviceType": "",
+                "deviceId": ""
+            });
+            Ok(result)
         }
     }
-
-    pub fn is_running(&self) -> bool {
-        self.is_running
-    }
-
-    pub fn stop(&mut self) -> TeleconferenceResult<()> {
-        if !self.is_running {
-            return Ok(());
-        }
-
-        self.is_running = false;
-        self.active_sessions = 0;
-        self.listener = None;
-
-        println!("VoidAgent sunucusu durdu");
-        Ok(())
-    }
-}
-
-// Clone trait implementation for VoidAgentServer
-impl Clone for VoidAgentServer {
-    fn clone(&self) -> Self {
-        Self {
-            address: self.address.clone(),
-            port: self.port,
-            is_running: self.is_running,
-            active_sessions: self.active_sessions,
-            listener: None, // Listener cannot be cloned directly
-            core: Arc::clone(&self.core),
-            connected_clients: Arc::clone(&self.connected_clients),
-        }
-    }
-}
-
-// Yardımcı fonksiyonlar
-fn get_current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-// Flutter Rust Bridge için gerekli fonksiyonlar
-#[flutter_rust_bridge::frb(sync)]
-pub fn initialize_audio_processor() -> Result<bool> {
-    let _processor = AUDIO_PROCESSOR.lock().unwrap();
-    // Ses işleme modülünü başlat
-    println!("Ses işleme modülü başlatıldı");
-    Ok(true)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn process_audio(audio_data: Vec<f32>) -> Result<Vec<f32>> {
-    let processor = AUDIO_PROCESSOR.lock().unwrap();
-    processor.process(&audio_data)
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn analyze_frequency(audio_data: Vec<f32>) -> Result<Vec<f32>> {
-    // Basit bir frekans analizi
-    let mut result = Vec::with_capacity(10);
-    for i in 0..10 {
-        result.push(i as f32 * 0.1);
-    }
-    Ok(result)
 }

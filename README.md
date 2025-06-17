@@ -1,166 +1,121 @@
-# VoidAgent Telekonferans Sistemi
-
-Bu proje çoklu cihazlardan (mobil telefonlar, sunucular ve Linux/Raspberry Pi cihazlar) katılabilen bir telekonferans sistemi geliştirmek amacıyla kurulmuş bir yapay zeka projesidir. Proje adı `voidagent`'tir. Kodlama `Rust` ve `Flutter` dilleriyle eş zamanlı yapılmaktadır.
-
-## 📁 Klasör Yapısı
-
-```
-teleconference_project/
-├── .gitignore
-├── README.md
-├── Cargo.toml
-├── lib.rs                  <-- ✅ Ana Rust kütüphanesi (burada sunucu kodu var)
-├── main.rs                 <-- Rust backend giriş noktası (henüz boş)
-├── Cargo.lock
-├── pubspec.lock
-├── build/                  <-- Uygulama yapılarında oluşturulan çıktılar
-├── core_api/               <-- Temel API yapıları için kaynaklar klasörü
-│   ├── mod.rs              <-- Modül exports'ları
-│   ├── teleconference.rs   <-- Temel arayüzler
-│   ├── teleconference_impl.rs <-- Gerçek API implementasyonu
-│   └── message.rs          <-- İstemci-sunucu mesaj yapıları
-├── pubspec.yaml            <-- <-- Flutter projeye ait bağımlılıkların ve ayarların bulunduğu dosya
-└── lib/                    <-- Flutter frontend kaynakları
-    └── main.dart
-```
-
-## 🚀 Mevcut Geliştirme Adımları
-
-Şu ana kadar gerçekleştirilen çalışmalar:
-
-### 🌳 `voidagent` branch oluşturma ve yapılandırması
-- `git checkout -b voidagent` komutu ile yeni bir branch açıldı
-- `.gitignore` dosyası yapılandırıldı:
-  - Rust ve Flutter bağımlılıkları hariç tutuldu (`Cargo.lock`, `pubspec.lock`)
-  - Derleme çıktıları hariç tutuldu (`build/`)
-  - Ortam dosyaları hariç tutuldu (`.env`)
-  - Editör ve işletim sistemine özel dosyalar hariç tutuldu
-
-### 📦 Core API yapısı oluşturuldu
-
-`core_api/` klasöründe temel API yapıları kuruldu:
-- `teleconference.rs`: `TeleconferenceCore` trait ve bu trait'i destekleyen yapıların tanımları
-  - Çoklu cihaz desteği: Mobil, sunucu, Raspberry Pi, Linux box
-  - Ağ kapasiteleri, katılımcı özellikleri
-  - Dinamik kalite değerlendirme, adaptif bit-rate kontrolü
-- `teleconference_impl.rs`: `VoidAgentTeleconference` implementasyonu
-  - Mutex tabanlı senkronizasyon
-  - Gerçek zamanlı kalite ayarlaması ve cihaz uyumluluğu kontrolü
-- `mod.rs`: Modül exports ve kolay erişim tanımları
-
-### 🏢 Sunucu tarafı iskelet yapı kuruldu
-
-`lib.rs` dosyasında başlangıç sunucu implementasyonu yapıldı:
-```rust
-pub struct VoidAgentServer {
-    address: String,
-    port: u16,
-    is_running: bool,
-    active_sessions: u32,
-}
-
-impl VoidAgentServer {
-    pub fn new(address: &str, port: u16) -> Self { ... }
-    pub fn start(&mut self) -> TeleconferenceResult<()> { ... }
-    pub fn stop(&mut self) -> TeleconferenceResult<()> { ... }
-    pub fn is_running(&self) -> bool { ... }
-    pub fn version(&self) -> &str { ... }
-}
-```
-
-## 📚 Kütüphane Gereksinimleri
-
-### Rust Bağımlılıkları
-- [uuid](https://crates.io/crates/uuid): Cihaz ve kullanıcı kimlikleri için evrensel benzersiz kimlik (UUID) oluşturmak için kullanılır
-
-### Linux Setup (sunucu)
-- PulseAudio gelişim başlıkları (`libpulse-dev`)
-- ALSA gelişim başlıkları (`libasound2-dev`)
-- Opus gelişim başlıkları (`libopus-dev`)
-
-### Windows Gereksinimleri
-- DirectX başlıklar için ses desteği
-- MSVC++ derleme araçları
-
-### Mobil Gereksinimler (Android/iOS)
-- Android NDK (Native Development Kit)
-- Xcode ile komut satırı araçları (iOS)
-
-////////////////////////////////////////////
-
 # Telekonferans Uygulaması
 
-Gelişmiş ses işleme özellikleri ile donatılmış, çoklu platform destekli bir telekonferans uygulaması.
+Çoklu platform desteği ve düşük güçlü cihaz optimizasyonu ile gerçek zamanlı telekonferans uygulaması.
 
 ## Özellikler
 
-- **Gelişmiş Ses İşleme**:
-  - Gürültü azaltma
-  - Yankı iptali
-  - Ses yükseltme
-  - Tam çift yönlü iletişim
+- WebRTC tabanlı gerçek zamanlı video ve ses iletişimi
+- Gürültü engelleme ve yankı iptali
+- Konuşma tanıma ve altyazı desteği
+- Ekran paylaşımı
+- Metin tabanlı sohbet
+- Oda paylaşımı (QR kod ve bağlantı)
+- Çoklu platform desteği (Windows, Linux, Android, iOS)
+- Düşük güçlü cihaz optimizasyonu
+- Raspberry Pi sinyal sunucusu
 
-- **360° Ses Alma**:
-  - Çok yönlü mikrofon desteği
-  - Farklı mikrofon modları
+## Desteklenen Platformlar
 
-- **9 Seviyeli Ses Kontrolü**:
-  - Hassas ses seviyesi ayarı
-  - Görsel gösterge
-
-- **USB Bağlantı Desteği**:
-  - USB-C ve USB-A adaptör desteği
-  - Otomatik cihaz algılama
-
-- **Gizlilik Koruması**:
-  - Mikrofon ve hoparlör sessize alma
-  - Tam gizlilik modu
+- **Windows**: Geliştirme ve masaüstü kullanım
+- **Fedora Silverblue**: Linux masaüstü kullanım
+- **Raspberry Pi**: Sinyal sunucusu olarak kullanım
+- **Android/iOS**: Mobil kullanım
 
 ## Kurulum
 
-### Gereksinimler
+### Geliştirme Ortamı
 
-- Flutter SDK (en az 2.19.0 sürümü)
-- Rust (en güncel sürüm)
-- Cargo (Rust paket yöneticisi)
-- Android Studio veya VS Code (Flutter eklentisi ile)
-
-### Adımlar
-
-1. Depoyu klonlayın:
-git clone https://github.com/kullaniciadi/teleconference_app.git
-cd teleconference_app
-
-
-2. Flutter bağımlılıklarını yükleyin:
-flutter pub get
-
-
+1. Flutter SDK'yı kurun
+2. Bağımlılıkları yükleyin:
+   ```
+   flutter pub get
+   ```
 3. Uygulamayı çalıştırın:
-flutter run
+   ```
+   flutter run
+   ```
 
+### Raspberry Pi Sinyal Sunucusu
 
-## Geliştirme
+1. Node.js ve npm'i kurun
+2. Sunucu dizinine gidin:
+   ```
+   cd server
+   ```
+3. Bağımlılıkları yükleyin:
+   ```
+   npm install
+   ```
+4. Sunucuyu başlatın:
+   ```
+   npm start
+   ```
 
-### Proje Yapısı
+Alternatif olarak, `deploy_to_raspberry.sh` betiğini kullanarak sunucuyu Raspberry Pi'ye dağıtabilirsiniz:
+```
+chmod +x deploy_to_raspberry.sh
+./deploy_to_raspberry.sh
+```
 
-- `lib/`: Flutter uygulama kodları
-  - `services/`: Servis sınıfları
-  - `widgets/`: UI bileşenleri
-  - `models/`: Veri modelleri
-- `rust/`: Rust kütüphanesi
-  - `src/`: Kaynak kodlar
-  - `build.rs`: Derleme betikleri
+## Mimari
 
-### Katkıda Bulunma
+Uygulama aşağıdaki bileşenlerden oluşur:
 
-1. Bu depoyu fork edin
-2. Yeni bir branch oluşturun (`git checkout -b feature/amazing-feature`)
-3. Değişikliklerinizi commit edin (`git commit -m 'Add some amazing feature'`)
-4. Branch'inizi push edin (`git push origin feature/amazing-feature`)
-5. Pull Request açın
+- **Flutter UI**: Kullanıcı arayüzü
+- **WebRTC Servisi**: Peer-to-peer bağlantı yönetimi
+- **Ses Servisi**: Ses işleme ve gürültü engelleme
+- **Konuşma Servisi**: Konuşma tanıma ve altyazı oluşturma
+- **Platform Servisi**: Cihaz özelliklerine göre optimizasyon
+- **Yapılandırma Servisi**: Farklı platformlar için ayarlar
+- **Node.js Sinyal Sunucusu**: WebRTC sinyal iletimi
+
+## Performans Optimizasyonu
+
+Uygulama, farklı cihaz türleri için otomatik olarak performans optimizasyonu yapar:
+
+- **Düşük güçlü cihazlar**: Düşük çözünürlük ve kare hızı
+- **Mobil cihazlar**: Orta çözünürlük ve pil optimizasyonu
+- **Masaüstü cihazlar**: Yüksek çözünürlük ve kalite
+
+## X. Faz: Çoklu Platform Entegrasyonu ve Test
+
+Bu fazda, uygulama farklı platformlarda test edilmiş ve optimize edilmiştir:
+
+### X.1. Raspberry Pi Sinyal Sunucusu İyileştirmeleri
+
+- Otomatik başlatma ve yeniden başlatma mekanizması eklendi
+- Sunucu durumu izleme ve raporlama özellikleri geliştirildi
+- Düşük kaynak kullanımı için optimizasyonlar yapıldı
+- Güvenlik iyileştirmeleri ve SSL desteği eklendi
+
+### X.2. Mobil Cihaz Optimizasyonları
+
+- Huawei P40 Lite için özel kamera ve mikrofon ayarları
+- Pil tasarrufu modu ve arka plan optimizasyonları
+- Mobil veri kullanımını azaltmak için akıllı kalite ayarları
+- Kesintisiz bağlantı için otomatik yeniden bağlanma mekanizması
+
+### X.3. Fedora Silverblue Entegrasyonu
+
+- Flatpak paketi oluşturuldu
+- Immutable OS yapısına uygun yapılandırma yönetimi
+- Wayland ve X11 desteği iyileştirildi
+- Sistem kaynaklarını verimli kullanmak için optimizasyonlar
+
+### X.4. Çapraz Platform Test Sonuçları
+
+- Windows-Android arası iletişim testleri
+- Fedora-Raspberry Pi arası iletişim testleri
+- Düşük bant genişliği senaryoları için dayanıklılık testleri
+- Farklı ağ koşullarında performans ölçümleri
+
+### X.5. Gelecek Geliştirmeler
+
+- Uçtan uca şifreleme
+- Oda moderasyon özellikleri
+- Dosya paylaşımı
+- Toplantı kaydetme ve bulut depolama entegrasyonu
 
 ## Lisans
 
-Bu proje MIT lisansı altında lisanslanmıştır - detaylar için [LICENSE](LICENSE) dosyasına bakın.
-
+Bu proje MIT lisansı altında lisanslanmıştır.

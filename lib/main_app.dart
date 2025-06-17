@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:teleconference_app/services/audio_service.dart';
+import 'package:teleconference_app/services/webrtc_service.dart';
 import 'package:teleconference_app/audio_controls_screen.dart';
 
 void main() {
@@ -15,6 +16,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AudioService()),
+        ChangeNotifierProvider(create: (_) => WebRTCService()),
       ],
       child: MaterialApp(
         title: 'Telekonferans Uygulaması',
@@ -37,17 +39,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _isInitializing = true;
   String? _errorMessage;
+  final TextEditingController _roomIdController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _initializeAudioService();
+    _initializeServices();
   }
 
-  Future<void> _initializeAudioService() async {
+  Future<void> _initializeServices() async {
     try {
       final audioService = Provider.of<AudioService>(context, listen: false);
       await audioService.initialize();
+      
+      final webrtcService = Provider.of<WebRTCService>(context, listen: false);
+      await webrtcService.initialize();
+      
       setState(() {
         _isInitializing = false;
       });
@@ -84,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(_errorMessage!),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: _initializeAudioService,
+                onPressed: _initializeServices,
                 child: const Text('Tekrar Dene'),
               ),
             ],
@@ -106,6 +113,38 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 24),
             ),
             const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: TextField(
+                controller: _roomIdController,
+                decoration: const InputDecoration(
+                  labelText: 'Oda ID',
+                  hintText: 'Katılmak istediğiniz odanın ID\'sini girin',
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                final roomId = _roomIdController.text.trim();
+                if (roomId.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen bir oda ID\'si girin')),
+                  );
+                  return;
+                }
+                
+                final webrtcService = Provider.of<WebRTCService>(context, listen: false);
+                webrtcService.connect('ws://127.0.0.1:8080/ws', roomId);
+                
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AudioControlsScreen()),
+                );
+              },
+              child: const Text('Odaya Katıl'),
+            ),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -119,5 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+  
+  @override
+  void dispose() {
+    _roomIdController.dispose();
+    super.dispose();
   }
 }
